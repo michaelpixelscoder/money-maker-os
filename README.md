@@ -30,6 +30,8 @@ The current dev deployment is `dev:adventurous-tiger-371`.
 npx convex dev
 ```
 
+Authentication uses Convex Auth with email/password credentials. The public GitHub Pages app renders a sign-in screen first, and workspace queries/mutations require an authenticated Convex session.
+
 ## Checks
 
 ```bash

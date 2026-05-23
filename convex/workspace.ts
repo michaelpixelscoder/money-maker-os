@@ -1,12 +1,22 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
+import { getAuthUserId } from '@convex-dev/auth/server'
 
 const taskStatus = v.union(v.literal('todo'), v.literal('wip'), v.literal('need_feedback'), v.literal('done'), v.literal('canceled'))
 const phaseStatus = v.union(v.literal('planned'), v.literal('active'), v.literal('complete'), v.literal('paused'))
 
+async function requireAuth(ctx: Parameters<typeof getAuthUserId>[0]) {
+  const userId = await getAuthUserId(ctx)
+  if (userId === null) {
+    throw new Error('Not authenticated')
+  }
+  return userId
+}
+
 export const listWorkspace = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx)
     const [actors, phases, tasks, subtasks, files] = await Promise.all([
       ctx.db.query('actors').collect(),
       ctx.db.query('phases').collect(),
@@ -28,6 +38,7 @@ export const listWorkspace = query({
 export const seedWorkspace = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx)
     const existingActors = await ctx.db.query('actors').take(1)
     if (existingActors.length > 0) return { seeded: false }
 
@@ -115,6 +126,7 @@ export const createPhase = mutation({
     status: phaseStatus,
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx)
     return await ctx.db.insert('phases', { ...args, createdAt: Date.now() })
   },
 })
@@ -129,6 +141,7 @@ export const createTask = mutation({
     createdBy: v.id('actors'),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx)
     const now = Date.now()
     const slug = args.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `task-${now}`
     return await ctx.db.insert('tasks', {
@@ -145,6 +158,7 @@ export const createTask = mutation({
 export const updateTaskStatus = mutation({
   args: { taskId: v.id('tasks'), status: taskStatus },
   handler: async (ctx, args) => {
+    await requireAuth(ctx)
     await ctx.db.patch(args.taskId, { status: args.status, updatedAt: Date.now() })
   },
 })
@@ -152,6 +166,7 @@ export const updateTaskStatus = mutation({
 export const createSubtask = mutation({
   args: { taskId: v.id('tasks'), title: v.string() },
   handler: async (ctx, args) => {
+    await requireAuth(ctx)
     const siblings = await ctx.db.query('subtasks').withIndex('by_task', (q) => q.eq('taskId', args.taskId)).collect()
     const now = Date.now()
     return await ctx.db.insert('subtasks', {
@@ -168,6 +183,7 @@ export const createSubtask = mutation({
 export const updateSubtaskStatus = mutation({
   args: { subtaskId: v.id('subtasks'), status: taskStatus },
   handler: async (ctx, args) => {
+    await requireAuth(ctx)
     await ctx.db.patch(args.subtaskId, { status: args.status, updatedAt: Date.now() })
   },
 })

@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
+import { authTables } from '@convex-dev/auth/server'
 
 const actorType = v.union(v.literal('user'), v.literal('agent'), v.literal('client'))
 const phaseStatus = v.union(v.literal('planned'), v.literal('active'), v.literal('complete'), v.literal('paused'))
@@ -15,6 +16,7 @@ const fileKind = v.union(
 )
 
 export default defineSchema({
+  ...authTables,
   actors: defineTable({
     name: v.string(),
     type: actorType,

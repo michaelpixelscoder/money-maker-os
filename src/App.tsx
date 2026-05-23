@@ -15,13 +15,17 @@ import {
   LayoutDashboard,
   Link2,
   ListChecks,
+  LockKeyhole,
+  LogOut,
   MessageSquareWarning,
   Plus,
+  ShieldCheck,
   Table2,
   UsersRound,
   XCircle,
 } from 'lucide-react'
-import { useMutation, useQuery } from 'convex/react'
+import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from 'convex/react'
+import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
 import type { Id } from '../convex/_generated/dataModel'
 import { cn } from '@/lib/utils'
@@ -39,6 +43,23 @@ const statusMeta = {
 type TaskStatus = (typeof taskStatuses)[number]
 
 function App() {
+  return (
+    <>
+      <AuthLoading>
+        <LoadingShell />
+      </AuthLoading>
+      <Unauthenticated>
+        <SignInScreen />
+      </Unauthenticated>
+      <Authenticated>
+        <TasksActivity />
+      </Authenticated>
+    </>
+  )
+}
+
+function TasksActivity() {
+  const { signOut } = useAuthActions()
   const workspace = useQuery(api.workspace.listWorkspace)
   const seedWorkspace = useMutation(api.workspace.seedWorkspace)
   const createTask = useMutation(api.workspace.createTask)
@@ -142,13 +163,22 @@ function App() {
                 <p className="text-sm font-medium text-muted-foreground">Money Maker OS</p>
                 <h1 className="text-2xl font-semibold tracking-normal">Tasks Activity</h1>
               </div>
-              <button
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                onClick={() => void seedWorkspace()}
-              >
-                <Plus className="size-4" />
-                Seed workspace
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+                  onClick={() => void seedWorkspace()}
+                >
+                  <Plus className="size-4" />
+                  Seed workspace
+                </button>
+                <button
+                  className="inline-flex h-10 items-center gap-2 rounded-md border bg-card px-4 text-sm font-medium hover:bg-muted"
+                  onClick={() => void signOut()}
+                >
+                  <LogOut className="size-4" />
+                  Sign out
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -357,6 +387,92 @@ function IconButton({ active, label, children }: { active?: boolean; label: stri
     >
       {children}
     </button>
+  )
+}
+
+function SignInScreen() {
+  const { signIn } = useAuthActions()
+  const [flow, setFlow] = useState<'signIn' | 'signUp'>('signIn')
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setIsSubmitting(true)
+    const formData = new FormData(event.currentTarget)
+    formData.set('flow', flow)
+    try {
+      await signIn('password', formData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not authenticate.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1fr)]">
+      <section className="hidden border-r bg-card p-8 lg:flex lg:flex-col lg:justify-between">
+        <div className="flex size-12 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <BriefcaseBusiness className="size-6" />
+        </div>
+        <div className="max-w-xl">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+            <ShieldCheck className="size-4 text-primary" />
+            Private operating workspace
+          </div>
+          <h1 className="text-4xl font-semibold tracking-normal">Money Maker OS</h1>
+          <p className="mt-4 text-base leading-7 text-muted-foreground">
+            Tasks, phases, files, and execution plans stay behind authenticated sessions while the app remains publicly hosted.
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground">Convex Auth protects the data layer and session state.</p>
+      </section>
+
+      <section className="flex items-center justify-center p-5 sm:p-8">
+        <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-sm sm:p-6">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <LockKeyhole className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Money Maker OS</p>
+              <h2 className="text-xl font-semibold tracking-normal">{flow === 'signIn' ? 'Sign in' : 'Create account'}</h2>
+            </div>
+          </div>
+
+          <form className="space-y-3" onSubmit={(event) => void handleSubmit(event)}>
+            <Input name="email" placeholder="Email" type="email" autoComplete="email" required />
+            <Input
+              name="password"
+              placeholder="Password"
+              type="password"
+              autoComplete={flow === 'signIn' ? 'current-password' : 'new-password'}
+              required
+            />
+            {error && <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+            <button
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Working...' : flow === 'signIn' ? 'Sign in' : 'Create account'}
+            </button>
+          </form>
+
+          <button
+            className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-md border bg-card px-4 text-sm font-medium hover:bg-muted"
+            type="button"
+            onClick={() => {
+              setError('')
+              setFlow(flow === 'signIn' ? 'signUp' : 'signIn')
+            }}
+          >
+            {flow === 'signIn' ? 'Create an account instead' : 'Sign in instead'}
+          </button>
+        </div>
+      </section>
+    </main>
   )
 }
 
