@@ -30,7 +30,14 @@ The current dev deployment is `dev:adventurous-tiger-371`.
 npx convex dev
 ```
 
-Authentication uses Convex Auth with email/password credentials. The public GitHub Pages app renders a sign-in screen first, and workspace queries/mutations require an authenticated Convex session.
+Authentication uses Convex Auth with email/password credentials. The public GitHub Pages app renders a sign-in screen first, public sign-up is disabled, and workspace queries/mutations require an authenticated Convex session.
+
+The default admin account has been bootstrapped in the dev deployment:
+
+- Email: `admin@money-maker.local`
+- Password: `M0neyM@ker!2026`
+
+Change this password from the Admin activity after first sign-in.
 
 ## Checks
 

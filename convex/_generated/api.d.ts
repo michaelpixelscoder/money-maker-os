@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as passwordProvider from "../passwordProvider.js";
 import type * as workspace from "../workspace.js";
 
 import type {
@@ -19,8 +21,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
   auth: typeof auth;
   http: typeof http;
+  passwordProvider: typeof passwordProvider;
   workspace: typeof workspace;
 }>;
 

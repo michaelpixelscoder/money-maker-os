@@ -12,6 +12,7 @@ import {
   FileText,
   Film,
   FolderKanban,
+  KeyRound,
   LayoutDashboard,
   Link2,
   ListChecks,
@@ -20,11 +21,13 @@ import {
   MessageSquareWarning,
   Plus,
   ShieldCheck,
+  Trash2,
+  UserPlus,
   Table2,
   UsersRound,
   XCircle,
 } from 'lucide-react'
-import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from 'convex/react'
+import { Authenticated, AuthLoading, Unauthenticated, useAction, useMutation, useQuery } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
 import type { Id } from '../convex/_generated/dataModel'
@@ -41,6 +44,12 @@ const statusMeta = {
 }
 
 type TaskStatus = (typeof taskStatuses)[number]
+type UserRole = 'admin' | 'user'
+
+function optionalFormString(value: FormDataEntryValue | null) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text || undefined
+}
 
 function App() {
   return (
@@ -60,6 +69,7 @@ function App() {
 
 function TasksActivity() {
   const { signOut } = useAuthActions()
+  const currentUser = useQuery(api.admin.currentUser)
   const workspace = useQuery(api.workspace.listWorkspace)
   const seedWorkspace = useMutation(api.workspace.seedWorkspace)
   const createTask = useMutation(api.workspace.createTask)
@@ -69,6 +79,7 @@ function TasksActivity() {
   const updateSubtaskStatus = useMutation(api.workspace.updateSubtaskStatus)
   const [selectedTaskId, setSelectedTaskId] = useState<Id<'tasks'> | null>(null)
   const [newSubtask, setNewSubtask] = useState('')
+  const [activity, setActivity] = useState<'tasks' | 'admin'>('tasks')
 
   const selectedTask = useMemo(() => {
     if (!workspace?.tasks.length) return null
@@ -143,7 +154,7 @@ function TasksActivity() {
           <BriefcaseBusiness className="size-5" />
         </div>
         <nav className="mt-8 flex flex-1 flex-col gap-3">
-          <IconButton active label="Tasks">
+          <IconButton active={activity === 'tasks'} label="Tasks" onClick={() => setActivity('tasks')}>
             <ListChecks className="size-5" />
           </IconButton>
           <IconButton label="Ads">
@@ -152,6 +163,11 @@ function TasksActivity() {
           <IconButton label="CRM">
             <UsersRound className="size-5" />
           </IconButton>
+          {currentUser?.role === 'admin' && (
+            <IconButton active={activity === 'admin'} label="Admin" onClick={() => setActivity('admin')}>
+              <ShieldCheck className="size-5" />
+            </IconButton>
+          )}
         </nav>
       </aside>
 
@@ -161,7 +177,7 @@ function TasksActivity() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Money Maker OS</p>
-                <h1 className="text-2xl font-semibold tracking-normal">Tasks Activity</h1>
+                <h1 className="text-2xl font-semibold tracking-normal">{activity === 'admin' ? 'Admin' : 'Tasks Activity'}</h1>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -183,14 +199,18 @@ function TasksActivity() {
           </div>
         </header>
 
-        <section className="grid gap-4 px-4 py-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
+        {activity === 'admin' && currentUser?.role === 'admin' ? (
+          <AdminPage />
+        ) : (
+          <>
+            <section className="grid gap-4 px-4 py-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
           <Metric label="Active tasks" value={metrics.active} />
           <Metric label="Completed" value={metrics.done} />
           <Metric label="Phases" value={metrics.phases} />
           <Metric label="Actors" value={metrics.actors} />
-        </section>
+            </section>
 
-        <section className="grid gap-5 px-4 pb-8 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)] lg:px-8">
+            <section className="grid gap-5 px-4 pb-8 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)] lg:px-8">
           <div className="space-y-5">
             <Panel title="Plan a task" icon={<Plus className="size-4" />}>
               <form className="space-y-3" onSubmit={(event) => void handleTaskSubmit(event)}>
@@ -369,17 +389,154 @@ function TasksActivity() {
               </section>
             )}
           </div>
-        </section>
+            </section>
+          </>
+        )}
       </main>
     </div>
   )
 }
 
-function IconButton({ active, label, children }: { active?: boolean; label: string; children: React.ReactNode }) {
+function AdminPage() {
+  const users = useQuery(api.admin.listUsers)
+  const createUser = useAction(api.admin.createUser)
+  const updateUser = useMutation(api.admin.updateUser)
+  const removeUser = useMutation(api.admin.removeUser)
+  const changeUserPassword = useAction(api.admin.changeUserPassword)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  async function runAdminTask(task: () => Promise<unknown>, success: string) {
+    setError('')
+    setMessage('')
+    try {
+      await task()
+      setMessage(success)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Admin action failed')
+    }
+  }
+
+  async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await runAdminTask(
+      async () => {
+        await createUser({
+          email: String(form.get('email')),
+          password: String(form.get('password')),
+          name: optionalFormString(form.get('name')),
+          role: String(form.get('role')) as UserRole,
+        })
+        event.currentTarget.reset()
+      },
+      'User created.',
+    )
+  }
+
+  return (
+    <section className="space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <Panel title="Add user" icon={<UserPlus className="size-4" />}>
+          <form className="space-y-3" onSubmit={(event) => void handleCreateUser(event)}>
+            <Input name="email" type="email" placeholder="Email" required />
+            <Input name="name" placeholder="Display name" />
+            <Input name="password" type="password" placeholder="Temporary password" required />
+            <select className="h-10 w-full rounded-md border bg-card px-3 text-sm" name="role" defaultValue="user">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              <UserPlus className="size-4" />
+              Create user
+            </button>
+          </form>
+        </Panel>
+
+        <Panel title="Users" icon={<UsersRound className="size-4" />}>
+          <div className="mb-4 space-y-2">
+            {message && <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
+            {error && <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+          </div>
+          <div className="space-y-3">
+            {users?.map((user) => (
+              <form
+                key={user._id}
+                className="grid gap-3 rounded-md border p-3 xl:grid-cols-[minmax(180px,1.3fr)_minmax(140px,1fr)_110px_120px_auto]"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const form = new FormData(event.currentTarget)
+                  void runAdminTask(
+                    async () =>
+                      updateUser({
+                        userId: user._id,
+                        email: String(form.get('email')),
+                        name: optionalFormString(form.get('name')),
+                        role: String(form.get('role')) as UserRole,
+                        disabled: form.get('disabled') === 'on',
+                      }),
+                    'User updated.',
+                  )
+                }}
+              >
+                <Input name="email" type="email" defaultValue={user.email} required />
+                <Input name="name" defaultValue={user.name} placeholder="Name" />
+                <select className="h-10 rounded-md border bg-card px-3 text-sm" name="role" defaultValue={user.role ?? 'user'}>
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <label className="inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                  <input name="disabled" type="checkbox" defaultChecked={user.disabled} />
+                  Disabled
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">
+                    Save
+                  </button>
+                  <button
+                    className="inline-flex size-10 items-center justify-center rounded-md border bg-card hover:bg-muted"
+                    title="Change password"
+                    type="button"
+                    onClick={() => {
+                      const password = window.prompt(`New password for ${user.email}`)
+                      if (!password) return
+                      void runAdminTask(
+                        async () => changeUserPassword({ userId: user._id, password }),
+                        'Password changed.',
+                      )
+                    }}
+                  >
+                    <KeyRound className="size-4" />
+                  </button>
+                  <button
+                    className="inline-flex size-10 items-center justify-center rounded-md border border-destructive/30 bg-card text-destructive hover:bg-destructive/10"
+                    title="Remove user"
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm(`Remove ${user.email}?`)) return
+                      void runAdminTask(async () => removeUser({ userId: user._id }), 'User removed.')
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              </form>
+            ))}
+            {!users && <EmptyState text="Loading users..." />}
+            {users?.length === 0 && <EmptyState text="No users yet." />}
+          </div>
+        </Panel>
+      </div>
+    </section>
+  )
+}
+
+function IconButton({ active, label, onClick, children }: { active?: boolean; label: string; onClick?: () => void; children: React.ReactNode }) {
   return (
     <button
       aria-label={label}
       title={label}
+      onClick={onClick}
       className={cn(
         'flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground',
         active && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
@@ -392,7 +549,6 @@ function IconButton({ active, label, children }: { active?: boolean; label: stri
 
 function SignInScreen() {
   const { signIn } = useAuthActions()
-  const [flow, setFlow] = useState<'signIn' | 'signUp'>('signIn')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -401,7 +557,7 @@ function SignInScreen() {
     setError('')
     setIsSubmitting(true)
     const formData = new FormData(event.currentTarget)
-    formData.set('flow', flow)
+    formData.set('flow', 'signIn')
     try {
       await signIn('password', formData)
     } catch (err) {
@@ -438,7 +594,7 @@ function SignInScreen() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Money Maker OS</p>
-              <h2 className="text-xl font-semibold tracking-normal">{flow === 'signIn' ? 'Sign in' : 'Create account'}</h2>
+              <h2 className="text-xl font-semibold tracking-normal">Sign in</h2>
             </div>
           </div>
 
@@ -448,7 +604,7 @@ function SignInScreen() {
               name="password"
               placeholder="Password"
               type="password"
-              autoComplete={flow === 'signIn' ? 'current-password' : 'new-password'}
+              autoComplete="current-password"
               required
             />
             {error && <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
@@ -456,20 +612,9 @@ function SignInScreen() {
               className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Working...' : flow === 'signIn' ? 'Sign in' : 'Create account'}
+              {isSubmitting ? 'Working...' : 'Sign in'}
             </button>
           </form>
-
-          <button
-            className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-md border bg-card px-4 text-sm font-medium hover:bg-muted"
-            type="button"
-            onClick={() => {
-              setError('')
-              setFlow(flow === 'signIn' ? 'signUp' : 'signIn')
-            }}
-          >
-            {flow === 'signIn' ? 'Create an account instead' : 'Sign in instead'}
-          </button>
         </div>
       </section>
     </main>

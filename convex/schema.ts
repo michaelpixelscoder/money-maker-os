@@ -2,6 +2,8 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 import { authTables } from '@convex-dev/auth/server'
 
+const { users: _users, ...authTablesWithoutUsers } = authTables
+void _users
 const actorType = v.union(v.literal('user'), v.literal('agent'), v.literal('client'))
 const phaseStatus = v.union(v.literal('planned'), v.literal('active'), v.literal('complete'), v.literal('paused'))
 const taskStatus = v.union(v.literal('todo'), v.literal('wip'), v.literal('need_feedback'), v.literal('done'), v.literal('canceled'))
@@ -16,7 +18,21 @@ const fileKind = v.union(
 )
 
 export default defineSchema({
-  ...authTables,
+  ...authTablesWithoutUsers,
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    role: v.optional(v.union(v.literal('admin'), v.literal('user'))),
+    disabled: v.optional(v.boolean()),
+  })
+    .index('email', ['email'])
+    .index('phone', ['phone'])
+    .index('by_role', ['role']),
   actors: defineTable({
     name: v.string(),
     type: actorType,
