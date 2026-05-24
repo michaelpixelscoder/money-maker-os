@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
+  ArrowLeft,
   BriefcaseBusiness,
   CalendarDays,
   CheckCircle2,
@@ -19,6 +20,7 @@ import {
   LockKeyhole,
   LogOut,
   MessageSquareWarning,
+  Milestone,
   Plus,
   ShieldCheck,
   Trash2,
@@ -45,6 +47,27 @@ const statusMeta = {
 
 type TaskStatus = (typeof taskStatuses)[number]
 type UserRole = 'admin' | 'user'
+type Activity = 'overview' | 'tasks' | 'phase' | 'admin'
+type ActorRecord = { _id: Id<'actors'>; name: string }
+type PhaseRecord = {
+  _id: Id<'phases'>
+  name: string
+  startDate: string
+  endDate: string
+  status: 'planned' | 'active' | 'complete' | 'paused'
+}
+type TaskRecord = {
+  _id: Id<'tasks'>
+  title: string
+  description: string
+  status: TaskStatus
+  actorIds: Id<'actors'>[]
+  dependencyIds: Id<'tasks'>[]
+  dueDate?: string
+  phaseId?: Id<'phases'>
+  taskFolder: string
+  updatedAt: number
+}
 
 function optionalFormString(value: FormDataEntryValue | null) {
   const text = typeof value === 'string' ? value.trim() : ''
@@ -78,8 +101,9 @@ function TasksActivity() {
   const createSubtask = useMutation(api.workspace.createSubtask)
   const updateSubtaskStatus = useMutation(api.workspace.updateSubtaskStatus)
   const [selectedTaskId, setSelectedTaskId] = useState<Id<'tasks'> | null>(null)
+  const [selectedPhaseId, setSelectedPhaseId] = useState<Id<'phases'> | null>(null)
   const [newSubtask, setNewSubtask] = useState('')
-  const [activity, setActivity] = useState<'tasks' | 'admin'>('tasks')
+  const [activity, setActivity] = useState<Activity>('overview')
 
   const selectedTask = useMemo(() => {
     if (!workspace?.tasks.length) return null
@@ -91,6 +115,7 @@ function TasksActivity() {
     .filter((subtask) => subtask.taskId === selectedTask?._id)
     .sort((a, b) => a.sortOrder - b.sortOrder) ?? []
   const phase = workspace?.phases.find((item) => item._id === selectedTask?.phaseId)
+  const selectedPhase = workspace?.phases.find((item) => item._id === selectedPhaseId) ?? null
 
   const metrics = useMemo(() => {
     const tasks = workspace?.tasks ?? []
@@ -143,6 +168,16 @@ function TasksActivity() {
     setNewSubtask('')
   }
 
+  function openPhase(phaseId: Id<'phases'>) {
+    setSelectedPhaseId(phaseId)
+    setActivity('phase')
+  }
+
+  function openTask(taskId: Id<'tasks'>) {
+    setSelectedTaskId(taskId)
+    setActivity('tasks')
+  }
+
   if (!workspace) {
     return <LoadingShell />
   }
@@ -154,6 +189,9 @@ function TasksActivity() {
           <BriefcaseBusiness className="size-5" />
         </div>
         <nav className="mt-8 flex flex-1 flex-col gap-3">
+          <IconButton active={activity === 'overview'} label="Overview" onClick={() => setActivity('overview')}>
+            <Milestone className="size-5" />
+          </IconButton>
           <IconButton active={activity === 'tasks'} label="Tasks" onClick={() => setActivity('tasks')}>
             <ListChecks className="size-5" />
           </IconButton>
@@ -177,7 +215,15 @@ function TasksActivity() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Money Maker OS</p>
-                <h1 className="text-2xl font-semibold tracking-normal">{activity === 'admin' ? 'Admin' : 'Tasks Activity'}</h1>
+                <h1 className="text-2xl font-semibold tracking-normal">
+                  {activity === 'admin'
+                    ? 'Admin'
+                    : activity === 'overview'
+                      ? 'Overview'
+                      : activity === 'phase'
+                        ? selectedPhase?.name ?? 'Phase'
+                        : 'Tasks Activity'}
+                </h1>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -201,6 +247,22 @@ function TasksActivity() {
 
         {activity === 'admin' && currentUser?.role === 'admin' ? (
           <AdminPage />
+        ) : activity === 'overview' ? (
+          <OverviewPage
+            actors={workspace.actors}
+            phases={workspace.phases}
+            tasks={workspace.tasks}
+            onOpenPhase={openPhase}
+            onOpenTask={openTask}
+          />
+        ) : activity === 'phase' && selectedPhase ? (
+          <PhasePage
+            actors={workspace.actors}
+            phase={selectedPhase}
+            tasks={workspace.tasks.filter((task) => task.phaseId === selectedPhase._id)}
+            onBack={() => setActivity('overview')}
+            onOpenTask={openTask}
+          />
         ) : (
           <>
             <section className="grid gap-4 px-4 py-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
@@ -292,7 +354,14 @@ function TasksActivity() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={selectedTask.status} />
-                        {phase && <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">{phase.name}</span>}
+                        {phase && (
+                          <button
+                            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                            onClick={() => openPhase(phase._id)}
+                          >
+                            {phase.name}
+                          </button>
+                        )}
                       </div>
                       <h2 className="mt-3 text-2xl font-semibold tracking-normal">{selectedTask.title}</h2>
                       <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -370,7 +439,7 @@ function TasksActivity() {
                 <Panel title="Phase timeline" icon={<CalendarDays className="size-4" />}>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {workspace.phases.map((item) => (
-                      <div key={item._id} className="rounded-md border p-3">
+                      <button key={item._id} className="rounded-md border p-3 text-left transition hover:border-primary hover:bg-muted/60" onClick={() => openPhase(item._id)}>
                         <p className="font-medium">{item.name}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {item.startDate} to {item.endDate}
@@ -378,7 +447,7 @@ function TasksActivity() {
                         <span className="mt-3 inline-flex rounded-md bg-muted px-2 py-1 text-xs capitalize text-muted-foreground">
                           {item.status}
                         </span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </Panel>
@@ -395,6 +464,180 @@ function TasksActivity() {
       </main>
     </div>
   )
+}
+
+function OverviewPage({
+  actors,
+  phases,
+  tasks,
+  onOpenPhase,
+  onOpenTask,
+}: {
+  actors: ActorRecord[]
+  phases: PhaseRecord[]
+  tasks: TaskRecord[]
+  onOpenPhase: (phaseId: Id<'phases'>) => void
+  onOpenTask: (taskId: Id<'tasks'>) => void
+}) {
+  const unassignedTasks = tasks.filter((task) => !task.phaseId)
+
+  return (
+    <section className="space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Phases" value={phases.length} />
+        <Metric label="Tasks" value={tasks.length} />
+        <Metric label="Active" value={tasks.filter((task) => task.status === 'wip' || task.status === 'need_feedback').length} />
+        <Metric label="Done" value={tasks.filter((task) => task.status === 'done').length} />
+      </div>
+
+      <div className="space-y-4">
+        {phases.map((phase) => {
+          const phaseTasks = tasks.filter((task) => task.phaseId === phase._id)
+          const progress = phaseProgress(phaseTasks)
+
+          return (
+            <section key={phase._id} className="rounded-lg border bg-card p-4 shadow-sm">
+              <button className="w-full text-left" onClick={() => onOpenPhase(phase._id)}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-semibold tracking-normal">{phase.name}</h2>
+                      <span className="rounded-md bg-muted px-2 py-1 text-xs capitalize text-muted-foreground">{phase.status}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{phase.startDate} to {phase.endDate}</p>
+                  </div>
+                  <div className="text-right text-sm">
+                    <p className="font-medium">{progress.done}/{progress.total} done</p>
+                    <p className="text-muted-foreground">{progress.percent}% complete</p>
+                  </div>
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${progress.percent}%` }} />
+                </div>
+              </button>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {phaseTasks.map((task) => (
+                  <TaskSummaryCard key={task._id} actors={actors} task={task} onOpenTask={onOpenTask} />
+                ))}
+                {phaseTasks.length === 0 && <EmptyState text="No tasks in this phase yet." />}
+              </div>
+            </section>
+          )
+        })}
+
+        {unassignedTasks.length > 0 && (
+          <section className="rounded-lg border bg-card p-4 shadow-sm">
+            <h2 className="text-lg font-semibold tracking-normal">No phase</h2>
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {unassignedTasks.map((task) => (
+                <TaskSummaryCard key={task._id} actors={actors} task={task} onOpenTask={onOpenTask} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {phases.length === 0 && <EmptyState text="No phases yet. Create a phase from the Tasks activity." />}
+      </div>
+    </section>
+  )
+}
+
+function PhasePage({
+  actors,
+  phase,
+  tasks,
+  onBack,
+  onOpenTask,
+}: {
+  actors: ActorRecord[]
+  phase: PhaseRecord
+  tasks: TaskRecord[]
+  onBack: () => void
+  onOpenTask: (taskId: Id<'tasks'>) => void
+}) {
+  const progress = phaseProgress(tasks)
+  const activeTasks = tasks.filter((task) => task.status === 'wip' || task.status === 'need_feedback')
+
+  return (
+    <section className="space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      <button className="inline-flex h-10 items-center gap-2 rounded-md border bg-card px-3 text-sm font-medium hover:bg-muted" onClick={onBack}>
+        <ArrowLeft className="size-4" />
+        Overview
+      </button>
+
+      <section className="rounded-lg border bg-card p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-semibold tracking-normal">{phase.name}</h2>
+              <span className="rounded-md bg-muted px-2 py-1 text-xs capitalize text-muted-foreground">{phase.status}</span>
+            </div>
+            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <CalendarDays className="size-4" />
+              {phase.startDate} to {phase.endDate}
+            </p>
+          </div>
+          <div className="min-w-44 text-sm">
+            <p className="font-medium">{progress.done}/{progress.total} tasks done</p>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${progress.percent}%` }} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Tasks" value={tasks.length} />
+        <Metric label="Active" value={activeTasks.length} />
+        <Metric label="Feedback" value={tasks.filter((task) => task.status === 'need_feedback').length} />
+        <Metric label="Canceled" value={tasks.filter((task) => task.status === 'canceled').length} />
+      </section>
+
+      <Panel title="Phase tasks" icon={<ListChecks className="size-4" />}>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {tasks.map((task) => (
+            <TaskSummaryCard key={task._id} actors={actors} task={task} onOpenTask={onOpenTask} />
+          ))}
+          {tasks.length === 0 && <EmptyState text="No tasks are linked to this phase." />}
+        </div>
+      </Panel>
+    </section>
+  )
+}
+
+function TaskSummaryCard({
+  actors,
+  task,
+  onOpenTask,
+}: {
+  actors: ActorRecord[]
+  task: TaskRecord
+  onOpenTask: (taskId: Id<'tasks'>) => void
+}) {
+  return (
+    <button className="rounded-md border bg-background p-3 text-left transition hover:border-primary hover:bg-muted/60" onClick={() => onOpenTask(task._id)}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-medium">{task.title}</p>
+        <StatusBadge status={task.status} />
+      </div>
+      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{task.description}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span className="rounded-md bg-muted px-2 py-1">{task.dueDate ?? 'No due date'}</span>
+        <span className="rounded-md bg-muted px-2 py-1">{actorNames(actors, task.actorIds)}</span>
+      </div>
+    </button>
+  )
+}
+
+function phaseProgress(tasks: TaskRecord[]) {
+  const total = tasks.length
+  const done = tasks.filter((task) => task.status === 'done').length
+  return {
+    total,
+    done,
+    percent: total === 0 ? 0 : Math.round((done / total) * 100),
+  }
 }
 
 function AdminPage() {
